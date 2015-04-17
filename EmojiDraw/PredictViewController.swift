@@ -207,7 +207,7 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
                     dispatch_async(dispatch_get_main_queue(),{
                         //fill in our prediction text box with our actual prediction
                         self.prediction.text = pred
-                        self.acc.text = probLabel.substringToIndex(advance(probLabel.startIndex, 4))
+                        self.acc.text = probLabel.substringToIndex(advance(probLabel.startIndex, 3))
                     })
                 }else{
                     dispatch_async(dispatch_get_main_queue(),{
@@ -266,7 +266,7 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
     
     func updateModel(){
         //setting up our URL
-        let baseURL = "\(SERVER_URL)/UpdateModel?dsid=\(Int(currentDSID))&aglorithmSelection=\(Int(algoSegment.selectedSegmentIndex))&kNeighbors=\(Int(kmeansSlider.value))"
+        let baseURL = "\(SERVER_URL)/UpdateModel?dsid=\(Int(currentDSID))&option=\(Int(algoSegment.selectedSegmentIndex))&kNeighbors=\(Int(kmeansSlider.value))"
         let getUrl = NSURL(string: "\(baseURL)")
         
         print(getUrl)
