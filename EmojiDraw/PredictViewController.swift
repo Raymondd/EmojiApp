@@ -15,8 +15,9 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
     var lastPoint = CGPoint.zeroPoint
     var swiped = false
     var predNum = 0;
-    let brushWidth: CGFloat = 50.0
+    let brushWidth: CGFloat = 20.0
     let opacity: CGFloat = 1.0
+    let algos = ["KMeans", "SVM"]
     
     //setting up an alert system
     let alert = UIAlertView()
@@ -26,12 +27,46 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
     @IBOutlet weak var prediction: UILabel!
     @IBOutlet weak var actualValue: UITextField!
     @IBOutlet weak var usableView: UIImageView!
-    @IBOutlet weak var DSISLabel: UILabel!
+    @IBOutlet weak var kmeansSlider: UISlider!
+    @IBOutlet weak var algoSegment: UISegmentedControl!
+    @IBOutlet weak var acc: UILabel!
+    
     
     //networking vars
     var session = NSURLSession()
     var floatValue = 1.0
     var currentDSID = 1
+
+    @IBAction func algoChanged(sender: AnyObject) {
+        if(algoSegment.titleForSegmentAtIndex(algoSegment.selectedSegmentIndex) == "SVM"){
+            kmeansSlider.enabled = false
+        }else{
+            kmeansSlider.enabled = true
+        }
+    }
+    
+    @IBAction func sliderChanged(sender: AnyObject) {
+        algoSegment.setTitle("KMeans(K=\(Int(kmeansSlider.value)))", forSegmentAtIndex: 0)
+    }
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        self.actualValue.delegate = self;
+        prediction.text = "*"
+        
+        //connecting to our server
+        var sessionConfig = NSURLSessionConfiguration.ephemeralSessionConfiguration()
+        
+        sessionConfig.timeoutIntervalForRequest = 5.0
+        sessionConfig.timeoutIntervalForResource = 8.0
+        sessionConfig.HTTPMaximumConnectionsPerHost = 1
+        
+        self.session = NSURLSession(configuration: sessionConfig, delegate: self, delegateQueue:NSOperationQueue.mainQueue())
+        
+        self.kmeansSlider.maximumValue = 10
+        self.kmeansSlider.minimumValue = 1
+        self.kmeansSlider.value = 5
+    }
     
     @IBAction func submitPressed(sender: AnyObject) {
         //turn it into an image and send it to python server to add to our training set
@@ -53,38 +88,23 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
         }
     }
     
+    @IBAction func clearPressed(sender: AnyObject) {
+        imageView.image = nil
+        prediction.text = "*"
+        acc.text = "0.0"
+    }
     
-    @IBAction func predictPressed(sender: AnyObject) {
-        //send up image to be predicted upon and change uiLabel
-        prediction.text = "__"
+    func predictDrawing(){
         let image = getDrawing()
         prediction.text = "*"
         predictDrawing(image)
-        imageView.image = nil
     }
+    
+
     
     
     @IBAction func traindModelPressed(sender: AnyObject) {
         updateModel()
-    }
-    
-    @IBAction func newDSIDPressed(sender: AnyObject) {
-        fetchNewID()
-    }
-    
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        self.actualValue.delegate = self;
-        prediction.text = "*"
-        
-        //connecting to our server
-        var sessionConfig = NSURLSessionConfiguration.ephemeralSessionConfiguration()
-        
-        sessionConfig.timeoutIntervalForRequest = 5.0
-        sessionConfig.timeoutIntervalForResource = 8.0
-        sessionConfig.HTTPMaximumConnectionsPerHost = 1
-        
-        self.session = NSURLSession(configuration: sessionConfig, delegate: self, delegateQueue:NSOperationQueue.mainQueue())
     }
     
     func sendFeatureDrawing(drawing: UIImage, label: String) {
@@ -180,11 +200,14 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
                     let pred = predictionLabel
                     NSLog("PREDICTION: " + pred)
                     
+                    var probLabel = jsonDictionary.valueForKey("prob") as String!
+                    NSLog("PROB: " + probLabel)
+                    
                     //changing our UI on the main thread
                     dispatch_async(dispatch_get_main_queue(),{
                         //fill in our prediction text box with our actual prediction
                         self.prediction.text = pred
-                        self.imageView.image = nil
+                        self.acc.text = probLabel.substringToIndex(advance(probLabel.startIndex, 4))
                     })
                 }else{
                     dispatch_async(dispatch_get_main_queue(),{
@@ -217,11 +240,14 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
                     var jsonError: NSError?
                     
                     var jsonDictionary: NSDictionary = NSJSONSerialization.JSONObjectWithData(data, options: NSJSONReadingOptions.MutableContainers, error: &jsonError) as NSDictionary
+                    print(jsonDictionary)
                     
                     //let dsidLabel = "5"
                     let dsidLabel = jsonDictionary.valueForKey("dsid") as String!
+                    self.currentDSID = (dsidLabel as NSString).integerValue
+                    
                     dispatch_async(dispatch_get_main_queue(),{
-                        self.DSISLabel.text = dsidLabel
+                        //self.DSISLabel.text = dsidLabel
                     })
                     
                 }else{
@@ -240,12 +266,12 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
     
     func updateModel(){
         //setting up our URL
-        let baseURL = "\(SERVER_URL)/UpdateModel?dsid=\(currentDSID)"
+        let baseURL = "\(SERVER_URL)/UpdateModel?dsid=\(Int(currentDSID))&aglorithmSelection=\(Int(algoSegment.selectedSegmentIndex))&kNeighbors=\(Int(kmeansSlider.value))"
         let getUrl = NSURL(string: "\(baseURL)")
         
-        //add dsid to URL here let query = "?dsid=" +
+        print(getUrl)
         
-        // create a custom HTTP POST request
+        // create a custom HTTP GET request
         var request = NSMutableURLRequest(URL: getUrl!)
         
         let dataTask : NSURLSessionDataTask = self.session.dataTaskWithRequest(request,
@@ -256,6 +282,11 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
                     var jsonError: NSError?
                     var jsonDictionary: NSDictionary = NSJSONSerialization.JSONObjectWithData(data, options: NSJSONReadingOptions.MutableContainers, error: &jsonError) as NSDictionary
                     print(jsonDictionary)
+                    
+                    self.alert.title = "Model Trained"
+                    self.alert.message = ""
+                    self.alert.addButtonWithTitle("OK")
+                    self.alert.show()
                     
                 }else{
                     dispatch_async(dispatch_get_main_queue(),{
@@ -270,6 +301,8 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
         dataTask.resume() // start the task
         
     }
+    
+    
     
     
     
@@ -338,6 +371,8 @@ class PredictViewController: UIViewController,  UITextFieldDelegate, NSURLSessio
             // draw a single point
             drawLineFrom(lastPoint, toPoint: lastPoint)
         }
+        
+        predictDrawing()
         
     }
 
